@@ -3,6 +3,7 @@
 //! You are likely looking for the [watch function docs](./fn.watch.html).
 
 use notify::Watcher as NotifyWatcher;
+use notify::EventHandler;
 use slug::slugify;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -15,7 +16,7 @@ pub use libloading::{self, Library, Symbol};
 pub struct Watch {
     package_info: PackageInfo,
     _watcher: notify::RecommendedWatcher,
-    event_rx: crossbeam_channel::Receiver<notify::RawEvent>,
+    event_rx: crossbeam_channel::Receiver<Result<notify::Event,notify::Error>>,
 }
 
 struct PackageInfo {
@@ -222,7 +223,10 @@ pub fn watch(path: &Path) -> Result<Watch, WatchError> {
 
     // Begin watching the src path.
     let (tx, event_rx) = crossbeam_channel::unbounded();
-    let mut watcher = notify::RecommendedWatcher::new_immediate(tx)?;
+
+    let sender = ChannelSender(tx);
+
+    let mut watcher = notify::recommended_watcher(sender)?;
     watcher.watch(src_dir_path, notify::RecursiveMode::Recursive)?;
 
     // Collect the paths.
@@ -244,6 +248,22 @@ pub fn watch(path: &Path) -> Result<Watch, WatchError> {
     })
 }
 
+type SendT = Result<notify::Event, notify::Error>;
+
+pub struct ChannelSender(crossbeam_channel::Sender<SendT>);
+
+impl ChannelSender {
+    pub fn send(&mut self, msg: SendT) -> Result<(), crossbeam_channel::SendError<SendT>> {
+        self.0.send(msg)
+    }
+}
+
+impl EventHandler for ChannelSender {
+    fn handle_event(&mut self, event: Result<notify::Event, notify::Error>) {
+        let _ = self.send(event);
+    }
+}
+
 impl Watch {
     /// The path to the package's `Cargo.toml`.
     pub fn manifest_path(&self) -> &Path {
@@ -262,7 +282,7 @@ impl Watch {
                 Err(_) => return Err(NextError::ChannelClosed),
                 Ok(event) => event,
             };
-            if check_raw_event(event)? {
+            if check_raw_event(event?)? {
                 return Ok(self.package());
             }
         }
@@ -271,7 +291,7 @@ impl Watch {
     /// The same as `next`, but returns early if there are no pending events.
     pub fn try_next(&self) -> Result<Option<Package>, NextError> {
         for event in self.event_rx.try_iter() {
-            if check_raw_event(event)? {
+            if check_raw_event(event?)? {
                 return Ok(Some(self.package()));
             }
         }
@@ -482,11 +502,23 @@ fn _check_event(_event: notify::Event) -> bool {
 }
 
 // Whether or not the given event should trigger a rebuild.
-fn check_raw_event(event: notify::RawEvent) -> Result<bool, NextError> {
-    use notify::Op;
-    Ok(event.op?.intersects(
-        Op::CREATE | Op::REMOVE | Op::WRITE | Op::CLOSE_WRITE | Op::RENAME | Op::METADATA,
-    ))
+fn check_raw_event(event: notify::Event) -> Result<bool, NextError> {
+
+    use notify::event::*;
+
+    let kind = &event.kind;
+
+    let close_write = match event.kind {
+        EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
+        _ => false,
+    };
+
+    Ok(
+        kind.is_create() 
+        || kind.is_remove()
+        || kind.is_modify()
+        || close_write
+    )
 }
 
 // Get the dylib extension for this platform.
