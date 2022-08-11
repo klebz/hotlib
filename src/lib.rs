@@ -248,12 +248,14 @@ pub fn watch(path: &Path) -> Result<Watch, WatchError> {
     })
 }
 
-type SendT = Result<notify::Event, notify::Error>;
+//------------------------[these are for `recommended_watcher`]
+type ChannelMessage   = Result<notify::Event, notify::Error>;
+type ChannelSendError =  crossbeam_channel::SendError<ChannelMessage>;
 
-pub struct ChannelSender(crossbeam_channel::Sender<SendT>);
+struct ChannelSender(crossbeam_channel::Sender<ChannelMessage>);
 
 impl ChannelSender {
-    pub fn send(&mut self, msg: SendT) -> Result<(), crossbeam_channel::SendError<SendT>> {
+    pub fn send(&mut self, msg: ChannelMessage) -> Result<(), ChannelSendError> {
         self.0.send(msg)
     }
 }
