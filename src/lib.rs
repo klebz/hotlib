@@ -64,6 +64,13 @@ pub struct TempLibrary {
     lib:             Option<libloading::Library>,
 }
 
+impl TempLibrary {
+
+    pub fn new(path: &PathBuf) -> Self {
+        todo!();
+    }
+}
+
 /// Errors that might occur within the `watch` function.
 #[derive(Debug, Error)]
 pub enum WatchError {
