@@ -424,7 +424,7 @@ impl Build {
     ///
     /// Note that the copied dynamic library will
     /// be removed on `Drop`.
-    pub fn load(self) -> Result<TempLibrary, LoadError> {
+    pub fn load(&self) -> Result<TempLibrary, LoadError> {
 
         let dylib_path = self.dylib_path();
         let tmp_path   = self.tmp_dylib_path();
