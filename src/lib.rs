@@ -83,15 +83,6 @@ impl TempLibrary {
 
     pub fn new(path: &PathBuf) -> Result<Self,CreateTempLibraryError> {
 
-        let lib = libloading::Library::new(path)
-            .map(Some)
-            .map_err(
-                |err| CreateTempLibraryError::CouldNotLoadDirectlyFromDylib {
-                    path:  path.to_path_buf(),
-                    error: LoadError::Library { err }
-                }
-            )?;
-
         let metadata = path.metadata().map_err(|_err| {
             CreateTempLibraryError::CannotGetMetadata {
                 path:  path.to_path_buf(),
@@ -104,6 +95,15 @@ impl TempLibrary {
                 metadata
             }
         })?;
+
+        let lib = libloading::Library::new(path)
+            .map(Some)
+            .map_err(
+                |err| CreateTempLibraryError::CouldNotLoadDirectlyFromDylib {
+                    path:  path.to_path_buf(),
+                    error: LoadError::Library { err }
+                }
+            )?;
 
         Ok(
             TempLibrary {
