@@ -84,6 +84,22 @@ impl TempLibrary {
 
     pub fn new(path: &PathBuf) -> Result<Self,CreateTempLibraryError> {
 
+        let dylib_dir    = path.parent().expect("dylib path has no parent");
+
+        if cfg!(target_os = "macos") {
+            std::process::Command::new("install_name_tool")
+                .current_dir(dylib_dir)
+                .arg("-id")
+                .arg("''")
+                .arg(
+                    path
+                        .file_name()
+                        .expect("dylib path has no file name"),
+                )
+                .output()
+                .expect("ls command failed to start");
+        }
+
         let metadata = path.metadata().map_err(|_err| {
             CreateTempLibraryError::CannotGetMetadata {
                 path:  path.to_path_buf(),
@@ -120,25 +136,31 @@ impl TempLibrary {
 /// Errors that might occur within the `watch` function.
 #[derive(Debug, Error)]
 pub enum WatchError {
+
     #[error("invalid path: expected path to end with `Cargo.toml`")]
     InvalidPath,
+
     #[error("an IO error occurred while attempting to invoke `cargo metadata`: {err}")]
     Io {
         #[from]
         err: std::io::Error,
     },
+
     #[error("{err}")]
     ExitStatusUnsuccessful {
         #[from]
         err: ExitStatusUnsuccessfulError,
     },
+
     #[error("an error occurred when attempting to read cargo stdout as json: {err}")]
     Json {
         #[from]
         err: serde_json::Error,
     },
+
     #[error("no dylib targets were found within the given cargo package")]
     NoDylibTarget,
+
     #[error("failed to construct `notify::RecommendedWatcher`: {err}")]
     Notify {
         #[from]
