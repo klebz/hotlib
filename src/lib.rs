@@ -42,6 +42,7 @@ pub struct Package<'a> {
 /// either in place or via a temporary file as to
 /// allow for re-building the package while using
 /// the library.
+#[derive(Clone)]
 pub struct Build {
     lib_name:        String,
     target_dir_path: PathBuf,
