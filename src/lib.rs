@@ -62,6 +62,7 @@ pub struct TempLibrary {
     // implementation before the temporary library
     // file at `path` is removed.
     lib:             Option<libloading::Library>,
+    from_existing:   bool,
 }
 
 #[derive(Debug)]
@@ -110,6 +111,7 @@ impl TempLibrary {
                 build_timestamp,
                 path: path.clone(),
                 lib,
+                from_existing: true,
             }
         )
     }
@@ -511,6 +513,7 @@ impl Build {
                     build_timestamp,
                     path,
                     lib,
+                    from_existing: false,
                 };
                 return Ok(tmp);
             }
@@ -596,7 +599,9 @@ impl std::ops::Deref for TempLibrary {
 impl Drop for TempLibrary {
     fn drop(&mut self) {
         std::mem::drop(self.lib.take());
-        std::fs::remove_file(&self.path).ok();
+        if !self.from_existing {
+            std::fs::remove_file(&self.path).ok();
+        }
     }
 }
 
