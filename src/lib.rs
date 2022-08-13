@@ -62,7 +62,6 @@ pub struct TempLibrary {
     // implementation before the temporary library
     // file at `path` is removed.
     lib:             Option<libloading::Library>,
-    from_existing:   bool,
 }
 
 #[derive(Debug)]
@@ -78,59 +77,119 @@ pub enum CreateTempLibraryError {
         path:     PathBuf,
         metadata: std::fs::Metadata,
     },
+    LoadError {
+        error: LoadError,
+    }
 }
 
 impl TempLibrary {
 
-    pub fn new(path: &PathBuf) -> Result<Self,CreateTempLibraryError> {
+    pub fn new(dylib_path: &PathBuf, lib_name: &str) -> Result<Self,CreateTempLibraryError> {
 
-        let dylib_dir    = path.parent().expect("dylib path has no parent");
-
-        if cfg!(target_os = "macos") {
-            std::process::Command::new("install_name_tool")
-                .current_dir(dylib_dir)
-                .arg("-id")
-                .arg("''")
-                .arg(
-                    path
-                        .file_name()
-                        .expect("dylib path has no file name"),
-                )
-                .output()
-                .expect("ls command failed to start");
-        }
-
-        let metadata = path.metadata().map_err(|_err| {
+        let metadata = dylib_path.metadata().map_err(|_err| {
             CreateTempLibraryError::CannotGetMetadata {
-                path:  path.to_path_buf(),
+                path:  dylib_path.to_path_buf(),
             }
         })?;
 
         let build_timestamp = metadata.created().map_err(|_err| {
             CreateTempLibraryError::CannotGetFileCreationTime {
-                path: path.to_path_buf(),
+                path: dylib_path.to_path_buf(),
                 metadata
             }
         })?;
 
-        let lib = libloading::Library::new(path)
-            .map(Some)
-            .map_err(
-                |err| CreateTempLibraryError::CouldNotLoadDirectlyFromDylib {
-                    path:  path.to_path_buf(),
-                    error: LoadError::Library { err }
-                }
-            )?;
+        let tmp_path   = Self::tmp_dylib_path(lib_name, &build_timestamp);
+        let tmp_dir    = tmp_path.parent().expect("temp dylib path has no parent");
 
-        Ok(
-            TempLibrary {
-                build_timestamp,
-                path: path.clone(),
-                lib,
-                from_existing: true,
+        // If the library already exists, load it.
+        loop {
+
+            if tmp_path.exists() {
+
+                // This is some voodoo to enable
+                // reloading of dylib on mac os
+                if cfg!(target_os = "macos") {
+                    std::process::Command::new("install_name_tool")
+                        .current_dir(tmp_dir)
+                        .arg("-id")
+                        .arg("''")
+                        .arg(
+                            tmp_path
+                                .file_name()
+                                .expect("temp dylib path has no file name"),
+                        )
+                        .output()
+                        .expect("ls command failed to start");
+                }
+
+                let lib = libloading::Library::new(dylib_path)
+                    .map(Some)
+                    .map_err(
+                        |err| CreateTempLibraryError::CouldNotLoadDirectlyFromDylib {
+                            path:  dylib_path.to_path_buf(),
+                            error: LoadError::Library { err }
+                        }
+                    )?;
+
+                return Ok(
+                    TempLibrary {
+                        build_timestamp,
+                        path: tmp_path.clone(),
+                        lib,
+                    }
+                );
             }
-        )
+
+            // Copy the dylib to the tmp location.
+            std::fs::create_dir_all(tmp_dir)
+                .map_err(|err| 
+                    CreateTempLibraryError::LoadError {
+                        error: LoadError::Io { err }
+                    }
+                )?;
+
+            std::fs::copy(&dylib_path, &tmp_path)
+                .map_err(|err| 
+                    CreateTempLibraryError::LoadError {
+                        error: LoadError::Io { err }
+                    }
+                )?;
+        }
     }
+
+    /// The path to the temporary dynamic library
+    /// clone that will be created upon `load`.
+    fn tmp_dylib_path(lib_name: &str, build_timestamp: &SystemTime) -> PathBuf {
+        tmp_dir()
+            .join(Self::tmp_file_stem(lib_name, build_timestamp))
+            .with_extension(dylib_ext())
+    }
+
+    fn tmp_file_stem(lib_name: &str, build_timestamp: &SystemTime) -> String {
+        let timestamp_slug = slugify(format!("{}", humantime::format_rfc3339(*build_timestamp)));
+        format!("{}-{}", Self::file_stem(lib_name), timestamp_slug)
+    }
+
+    fn file_stem(lib_name: &str) -> String {
+
+        // TODO: On windows, the generated lib
+        // does not contain the "lib" prefix.
+        //
+        // A proper solution would likely involve
+        // retrieving the file stem from cargo
+        // itself.
+        #[cfg(target_os = "windows")]
+        {
+            format!("{}", lib_name)
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            format!("lib{}", lib_name)
+        }
+    }
+
 }
 
 /// Errors that might occur within the `watch` function.
@@ -535,7 +594,6 @@ impl Build {
                     build_timestamp,
                     path,
                     lib,
-                    from_existing: false,
                 };
                 return Ok(tmp);
             }
@@ -621,9 +679,7 @@ impl std::ops::Deref for TempLibrary {
 impl Drop for TempLibrary {
     fn drop(&mut self) {
         std::mem::drop(self.lib.take());
-        if !self.from_existing {
-            std::fs::remove_file(&self.path).ok();
-        }
+        std::fs::remove_file(&self.path).ok();
     }
 }
 
