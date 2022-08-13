@@ -117,9 +117,9 @@ impl TempLibrary {
                 // reloading of dylib on mac os
                 if cfg!(target_os = "macos") {
 
-                    tracing::info!("running install lib tool");
+                    tracing::info!("running install_name_tool");
 
-                    std::process::Command::new("install_name_tool")
+                    let output = std::process::Command::new("install_name_tool")
                         .current_dir(tmp_dir)
                         .arg("-id")
                         .arg("''")
@@ -130,6 +130,14 @@ impl TempLibrary {
                         )
                         .output()
                         .expect("ls command failed to start");
+
+                        tracing::info!("install_name_tool output status: {}", output.status);
+                        tracing::info!("install_name_tool output stdout: {}", String::from_utf8(output.stdout).unwrap());
+                        tracing::info!("install_name_tool output stdout: {}", String::from_utf8(output.stderr).unwrap());
+
+                        if !output.status.success() {
+                            tracing::info!("ERROR: install_name_tool failed!");
+                        }
                 }
 
                 let lib = libloading::Library::new(dylib_path)
