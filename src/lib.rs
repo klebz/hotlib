@@ -85,6 +85,7 @@ pub enum CreateTempLibraryError {
 
 impl TempLibrary {
 
+    #[tracing::instrument]
     pub fn new(dylib_path: &PathBuf, lib_name: &str) -> Result<Self,CreateTempLibraryError> {
 
         let metadata = dylib_path.metadata().map_err(|_err| {
@@ -100,8 +101,8 @@ impl TempLibrary {
             }
         })?;
 
-        let tmp_path   = Self::tmp_dylib_path(lib_name, &build_timestamp);
-        let tmp_dir    = tmp_path.parent().expect("temp dylib path has no parent");
+        let tmp_path = Self::tmp_dylib_path(lib_name, &build_timestamp);
+        let tmp_dir  = tmp_path.parent().expect("temp dylib path has no parent");
 
         // If the library already exists, load it.
         loop {
@@ -109,6 +110,7 @@ impl TempLibrary {
             if tmp_path.exists() {
 
                 tracing::debug!("creating Library from {:?}", tmp_path);
+                std::fs::write("/tmp/fuckafucka", format!{"dmt at {:?}", tmp_path}).unwrap();
 
                 // This is some voodoo to enable
                 // reloading of dylib on mac os
