@@ -686,6 +686,7 @@ impl std::ops::Deref for TempLibrary {
 
 impl Drop for TempLibrary {
     fn drop(&mut self) {
+        tracing::info!("dropping {:?}",self);
         std::mem::drop(self.lib.take());
         std::fs::remove_file(&self.path).ok();
     }
