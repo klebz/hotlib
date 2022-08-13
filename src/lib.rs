@@ -108,6 +108,8 @@ impl TempLibrary {
 
             if tmp_path.exists() {
 
+                tracing::debug!("creating Library from {:?}", tmp_path);
+
                 // This is some voodoo to enable
                 // reloading of dylib on mac os
                 if cfg!(target_os = "macos") {
