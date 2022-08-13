@@ -52,6 +52,7 @@ pub struct Build {
 
 /// A wrapper around a `libloading::Library` that
 /// cleans up the library on `Drop`.
+#[derive(Debug)]
 pub struct TempLibrary {
     build_timestamp: SystemTime,
     path:            PathBuf,
@@ -189,7 +190,6 @@ impl TempLibrary {
             format!("lib{}", lib_name)
         }
     }
-
 }
 
 /// Errors that might occur within the `watch` function.
