@@ -116,6 +116,9 @@ impl TempLibrary {
                 // This is some voodoo to enable
                 // reloading of dylib on mac os
                 if cfg!(target_os = "macos") {
+
+                    tracing::info!("running install lib tool");
+
                     std::process::Command::new("install_name_tool")
                         .current_dir(tmp_dir)
                         .arg("-id")
